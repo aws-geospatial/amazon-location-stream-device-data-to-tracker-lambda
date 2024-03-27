@@ -1,0 +1,105 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Metadata:
+  'AWS::ServerlessRepo::Application':
+    Name: kinesis-stream-device-data-to-location-tracker
+    Description:
+      Helps setup the resources to start streaming device location data to Amazon Location Service using BatchUpdateDevicePosition API. 
+      https://docs.aws.amazon.com/location/latest/APIReference/API_BatchUpdateDevicePosition.html
+    Author: Amazon Location Service
+    SpdxLicenseId: MIT-0
+    LicenseUrl: LICENSE
+    SemanticVersion: 1.0.4
+Parameters:
+  TrackerName:
+    Type: String
+    Default: 'KinesisDataConsumerTracker'
+    Description: Name of the Location Service tracker to be created. Default is KinesisDataConsumerTracker.
+  EventBridgeEnabled:
+    Type: String
+    Default: 'false'
+    Description: Whether to enable EventBridge. Default is false. Acceptable values [true, false].
+  TrackerPositionFilteringType:
+    Type: String
+    Default: 'TimeBased'
+    Description: Tracker's filtering type. Default is TimeBased. See Amazon Location Tracking documentation for details.
+  KinesisStreamArn:
+    Type: String
+    Description: ARN of your Kinesis data stream for tracking data.
+  PathToDeviceId:
+    Type: String
+    Default: '$.DeviceId'
+    Description: JSONPath to DeviceId. Default is $.DeviceId. Required. See BatchUpdateDevicePosition documentation for the definition of DeviceId.
+  PathToDevicePositionLongitude:
+    Type: String
+    Default: '$.Position[0]'
+    Description: JSONPath to Longitude. Default is $.Position[0], assuming Position is a list. Required. See BatchUpdateDevicePosition documentation for the definition of Position.
+  PathToDevicePositionLatitude:
+    Type: String
+    Default: '$.Position[1]'
+    Description: JSONPath to Latitude. Default is $.Position[1], assuming Position is a list. Required. See BatchUpdateDevicePosition documentation for the definition of Position.
+  PathToSampleTime:
+    Type: String
+    Default: '$.Time'
+    Description: JSONPath to SampleTime. Default is $.Time. Required. See BatchUpdateDevicePosition documentation for the definition of SampleTime.
+  PathToHorizontalAccuracy:
+    Type: String
+    Default: '$.HorizontalAccuracy'
+    Description: JSONPath to Horizontal Accuracy, for example $.HorizontalAccuracy. Optional. See BatchUpdateDevicePosition documentation for the definition of Accuracy. Only horizontal accuracy is currently supported.
+  PathToPositionProperties:
+    Type: String
+    Default: '$.Properties'
+    Description: JSONPath to PositionProperties, for example $.Properties. Optional. See BatchUpdateDevicePosition documentation for the definition of PositionProperties.
+Resources:
+  LocationTracker:
+    Type: AWS::Location::Tracker
+    Properties:
+      TrackerName: !Ref TrackerName
+      Description: "Tracker for my location-based application"
+      PositionFiltering: !Ref TrackerPositionFilteringType
+      EventBridgeEnabled: !Ref EventBridgeEnabled
+  TrackingDataConsumerLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: data_consumer.lambda_handler
+      Runtime: python3.12
+      CodeUri: ./src
+      Description: An AWS Lambda function to get data from Kinesis data stream and call Location Service's tracking feature.
+      MemorySize: 128
+      Timeout: 60
+      Environment:
+        Variables:
+          TRACKER_NAME: !Ref TrackerName
+          DEVICE_ID_PATH: !Ref PathToDeviceId
+          LONGITUDE_PATH: !Ref PathToDevicePositionLongitude
+          LATITUDE_PATH: !Ref PathToDevicePositionLatitude
+          SAMPLE_TIME_PATH: !Ref PathToSampleTime
+          HORIZONTAL_ACCURACY_PATH: !Ref PathToHorizontalAccuracy
+          POSITION_PROPERTIES_PATH: !Ref PathToPositionProperties
+      Policies:
+        - AWSLambdaKinesisExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - geo:BatchUpdateDevicePosition
+              Resource: !GetAtt LocationTracker.Arn
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:GenerateDataKey
+              Resource: !Sub 'arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+      Events:
+        KinesisEvent:
+          Type: Kinesis
+          Properties:
+            Stream: !Ref KinesisStreamArn
+            BatchSize: 100
+            StartingPosition: LATEST
+            MaximumBatchingWindowInSeconds: 5
+            MaximumRetryAttempts: 2
+            BisectBatchOnFunctionError: true # This will split a failed batch into two. This can help identify any failed records. See https://docs.aws.amazon.com/lambda/latest/dg/with-kinesis.html for guidance.
+            Enabled: True
+

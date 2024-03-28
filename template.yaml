@@ -4,14 +4,15 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 Metadata:
   'AWS::ServerlessRepo::Application':
-    Name: kinesis-stream-device-data-to-location-tracker
+    Name: kinesis-stream-device-data-to-amazon-location-tracker
     Description:
       Helps setup the resources to start streaming device location data to Amazon Location Service using BatchUpdateDevicePosition API. 
       https://docs.aws.amazon.com/location/latest/APIReference/API_BatchUpdateDevicePosition.html
     Author: Amazon Location Service
     SpdxLicenseId: MIT-0
     LicenseUrl: LICENSE
-    SemanticVersion: 1.0.4
+    SemanticVersion: 1.0.5
+    SourceCodeUrl: https://github.com/aws-geospatial/amazon-location-stream-device-data-to-tracker-lambda
 Parameters:
   TrackerName:
     Type: String

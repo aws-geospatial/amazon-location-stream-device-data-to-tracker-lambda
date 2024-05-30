@@ -21,11 +21,18 @@ Parameters:
   EventBridgeEnabled:
     Type: String
     Default: 'false'
-    Description: Whether to enable EventBridge. Default is false. Acceptable values [true, false].
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Whether the tracker should emit EventBridge events.
   TrackerPositionFilteringType:
     Type: String
     Default: 'TimeBased'
-    Description: Tracker's filtering type. Default is TimeBased. See Amazon Location Tracking documentation for details.
+    AllowedValues:
+      - TimeBased
+      - DistanceBased
+      - AccuracyBased
+    Description: The tracker's position filtering configuration. See Amazon Location Tracking documentation for details.
   KinesisStreamArn:
     Type: String
     Description: ARN of your Kinesis data stream for tracking data.

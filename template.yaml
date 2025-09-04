@@ -11,7 +11,7 @@ Metadata:
     Author: Amazon Location Service
     SpdxLicenseId: MIT-0
     LicenseUrl: LICENSE
-    SemanticVersion: 1.0.5
+    SemanticVersion: 1.0.6
     SourceCodeUrl: https://github.com/aws-geospatial/amazon-location-stream-device-data-to-tracker-lambda
 Parameters:
   TrackerName:

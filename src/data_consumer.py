@@ -106,12 +106,18 @@ def transform_record_to_update(record):
         and position_longitude_matches
         and position_latitude_matches
     ):
+        missing_fields = []
+        if not device_id_matches:
+            missing_fields.append("DeviceId")
+        if not sample_time_matches:
+            missing_fields.append("SampleTime")
+        if not position_longitude_matches:
+            missing_fields.append("Longitude")
+        if not position_latitude_matches:
+            missing_fields.append("Latitude")
         logger.info(
-            f"ERROR: Failed to find one or multiple required input fields. Ignoring this record. "
-            f"DeviceId: {device_id_matches}, "
-            f"SampleTime: {sample_time_matches}, "
-            f"Longitude: {position_longitude_matches}, "
-            f"Latitude: {position_latitude_matches}"
+            f"ERROR: Failed to find required input fields ({', '.join(missing_fields)}). "
+            f"Ignoring this record."
         )
         return {}
 

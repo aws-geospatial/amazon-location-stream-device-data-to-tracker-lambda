@@ -11,7 +11,7 @@ Metadata:
     Author: Amazon Location Service
     SpdxLicenseId: MIT-0
     LicenseUrl: LICENSE
-    SemanticVersion: 1.0.6
+    SemanticVersion: 1.1.0
     SourceCodeUrl: https://github.com/aws-geospatial/amazon-location-stream-device-data-to-tracker-lambda
 Parameters:
   TrackerName:
@@ -36,6 +36,19 @@ Parameters:
   KinesisStreamArn:
     Type: String
     Description: ARN of your Kinesis data stream for tracking data.
+  KinesisStreamKmsKeyArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws[a-zA-Z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+$'
+    ConstraintDescription: Must be empty, or a KMS key ARN of the form arn:<partition>:kms:<region>:<account>:key/<key-id> (an alias ARN is not accepted).
+    Description: >-
+      REQUIRED IF your source Kinesis stream is encrypted with a customer-managed
+      KMS key (CMK): set this to that key's ARN or the function will stop processing
+      records. The function is then granted only kms:Decrypt, scoped to this one key
+      and to requests carrying the stream's encryption context. Leave blank if the
+      stream is unencrypted or uses the AWS-managed key (aws/kinesis); in that case
+      no KMS permissions are granted. Provide the key ARN (arn:...:key/<id>), not an
+      alias ARN.
   PathToDeviceId:
     Type: String
     Default: '$.DeviceId'
@@ -60,6 +73,8 @@ Parameters:
     Type: String
     Default: '$.Properties'
     Description: JSONPath to PositionProperties, for example $.Properties. Optional. See BatchUpdateDevicePosition documentation for the definition of PositionProperties.
+Conditions:
+  HasKinesisStreamKmsKey: !Not [!Equals [!Ref KinesisStreamKmsKeyArn, '']]
 Resources:
   LocationTracker:
     Type: AWS::Location::Tracker
@@ -94,11 +109,16 @@ Resources:
               Action:
                 - geo:BatchUpdateDevicePosition
               Resource: !GetAtt LocationTracker.Arn
-            - Effect: Allow
-              Action:
-                - kms:Decrypt
-                - kms:GenerateDataKey
-              Resource: !Sub 'arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+            - !If
+              - HasKinesisStreamKmsKey
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: !Ref KinesisStreamKmsKeyArn
+                Condition:
+                  StringEquals:
+                    'kms:EncryptionContext:aws:kinesis:arn': !Ref KinesisStreamArn
+              - !Ref 'AWS::NoValue'
       Events:
         KinesisEvent:
           Type: Kinesis

@@ -20,6 +20,8 @@ It will create a Tracker and a Lambda function to stream data to the tracker, al
 
 `EventBridgeEnabled`: Whether EventBridge integration is turned on. It may incur additional costs by leaving it on unused.
 
+`KinesisStreamKmsKeyArn`: Optional. The ARN of the customer-managed KMS key (CMK) used for server-side encryption of your source Kinesis data stream. See [Encrypted Kinesis streams](#encrypted-kinesis-streams-customer-managed-kms-keys) below. Leave blank if your stream is unencrypted or uses the AWS-managed key (`aws/kinesis`).
+
 Note that this app requires a [Kinesis Data Stream](https://docs.aws.amazon.com/streams/latest/dev/getting-started.html) as an input. 
 
 The app supports custom event structure via [JSONPath-ng](https://pypi.org/project/jsonpath-ng/).
@@ -56,6 +58,23 @@ List of paths that are configurable:
 * `PathToSampleTime` maps to the `SampleTime` parameter of the API. Default is `$.Time`.
 * `PathToHorizontalAccuracy` maps to the `Accuracy` parameter, specifically the `Horizontal` key. Default is `$.HorizontalAccuracy`. `Horizontal` is the only type of accuracy supported by the API.
 * `PathToPositionProperties` maps to the `PositionProperties` parameter of the API.
+
+## Encrypted Kinesis streams (customer-managed KMS keys)
+
+If your source Kinesis data stream uses [server-side encryption](https://docs.aws.amazon.com/streams/latest/dev/server-side-encryption.html) with a **customer-managed KMS key (CMK)**, the function's execution role needs `kms:Decrypt` on that key so the event source can read records.
+
+1. Set the `KinesisStreamKmsKeyArn` parameter to the CMK ARN (the underlying key ARN of the form `arn:aws:kms:<region>:<account>:key/<key-id>` — **not** an alias ARN, and the per-region key ARN actually used by the stream). The function is then granted only `kms:Decrypt`, scoped to that single key, and only for requests carrying the stream's encryption context (`kms:EncryptionContext:aws:kinesis:arn` equal to `KinesisStreamArn`).
+2. The CMK's own [key policy](https://docs.aws.amazon.com/kms/latest/developerguide/key-policies.html) must also allow `kms:Decrypt` for this function's execution role principal — granting it in this template's IAM policy is necessary but not sufficient. Kinesis passes the encryption context `aws:kinesis:arn` (the stream ARN) on every KMS call it makes on the consumer's behalf.
+
+If your stream is unencrypted or uses the AWS-managed key (`aws/kinesis`), leave `KinesisStreamKmsKeyArn` blank. No KMS permissions are granted in that case.
+
+`kms:GenerateDataKey` is intentionally **not** granted: this app only consumes (reads) records, and `GenerateDataKey` is a producer-side permission. To check whether your stream uses a CMK, run `aws kinesis describe-stream-summary --stream-name <name>` and look at `EncryptionType` (`KMS`) and `KeyId`.
+
+## Upgrade notes
+
+**Upgrading from a version before 1.1.0:** Earlier versions granted the function broad KMS permissions (`kms:Decrypt` and `kms:GenerateDataKey`) on every key in the account/region. Starting in 1.1.0 these are scoped to least privilege: `kms:GenerateDataKey` is removed entirely, and `kms:Decrypt` is granted only when you provide `KinesisStreamKmsKeyArn`, scoped to that one key and to requests carrying the stream's encryption context.
+
+> ⚠️ **If your source stream is encrypted with a customer-managed KMS key, you must set `KinesisStreamKmsKeyArn` when you upgrade**, or the function will silently stop processing records (it will no longer be able to decrypt them). On update via the Serverless Application Repository console, make sure the new parameter is populated rather than left at its empty default. Deployments using an unencrypted stream or the AWS-managed `aws/kinesis` key are unaffected.
 
 ## Deploying for Private Development
 
@@ -120,6 +139,8 @@ This app logs failed executions or invalid position updates into its log group, 
 
 Note that this app calls BatchUpdateDevicePosition API. Retries on that API may result in the same position update being processed multiple times.
 Amazon Location handles this case by only storing the most recent position update.
+
+If `IteratorAge` climbs while there are **no** entries in the Lambda's log group, the most likely cause is a customer-managed-KMS-encrypted stream without decrypt access: confirm `KinesisStreamKmsKeyArn` is set to the stream's CMK ARN (see [Encrypted Kinesis streams](#encrypted-kinesis-streams-customer-managed-kms-keys)) and that the CMK key policy allows this role's `kms:Decrypt`.
 
 ## Security
 
